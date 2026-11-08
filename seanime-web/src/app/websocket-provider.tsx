@@ -201,7 +201,17 @@ function WebsocketManagement() {
                 if (serverAuthTokenRef.current) {
                     queryParams.set("token", serverAuthTokenRef.current)
                 }
-                const query = queryParams.toString()
+                let query = queryParams.toString()
+
+                // Yozora: when hosted behind the sandbox gateway (z.ai preview origin),
+                // all traffic enters through port 443 and the gateway routes to the
+                // local Go server via the XTransformPort query parameter. Attach it
+                // to the WebSocket URL so Caddy forwards the upgrade to the server.
+                if (typeof window !== "undefined" && window.location.hostname.endsWith(".space-z.ai")) {
+                    queryParams.set("XTransformPort", "43211")
+                    query = queryParams.toString()
+                }
+
                 socketRef.current = new WebSocket(query ? `${wsUrl}?${query}` : wsUrl)
 
                 // Reset the last pong timestamp whenever we connect
