@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"seanime/internal/api/anilist"
+	"seanime/internal/customsource"
 	"seanime/internal/extension"
 	hibikemanga "seanime/internal/extension/hibike/manga"
 	"seanime/internal/hook"
@@ -39,10 +40,13 @@ func getMangaChapterContainerCacheKey(provider string, mediaId int) string {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type GetMangaChapterContainerOptions struct {
-	Provider           string
-	MediaId            int
-	Titles             []*string
-	Year               int
+	Provider string
+	MediaId  int
+	Titles   []*string
+	Year     int
+	// YOZORA (fork): tagged provider siteUrl for custom source entries — used
+	// to resolve the provider id directly instead of failing title search.
+	SiteUrl            string
 	skipCache          bool
 	beforeProviderCall func() error
 }
@@ -149,6 +153,22 @@ func (r *Repository) GetMangaChapterContainer(opts *GetMangaChapterContainerOpti
 	if found {
 		r.logger.Debug().Str("mangaId", mapping.MangaID).Msg("manga: Using manual mapping")
 		mangaId = mapping.MangaID
+	}
+
+	// +---------------------+
+	// |   Custom source     |
+	// +---------------------+
+
+	// YOZORA (fork): custom source entries carry their provider page URL in the
+	// tagged siteUrl. Manga providers for these sources (e.g. yozora-nhentai)
+	// resolve gallery ids/URLs directly — title-based search is useless there.
+	if mangaId == "" && customsource.IsExtensionId(mediaId) && opts.SiteUrl != "" {
+		if rawUrl, ok := customsource.StripCustomSourceSiteUrlTag(opts.SiteUrl); ok {
+			mangaId = rawUrl
+			r.logger.Debug().
+				Str("mangaId", rawUrl).
+				Msg("manga: Using custom source site URL as provider manga id")
+		}
 	}
 
 	if mangaId == "" {

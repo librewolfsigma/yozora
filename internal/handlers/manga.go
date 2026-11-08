@@ -421,6 +421,7 @@ func (h *Handler) HandleGetMangaEntryChapters(c echo.Context) error {
 		MediaId:  b.MediaId,
 		Titles:   titles,
 		Year:     baseManga.GetStartYearSafe(),
+		SiteUrl:  func() string { if s := baseManga.GetSiteURL(); s != nil { return *s }; return "" }(),
 	})
 	if err != nil {
 		return h.RespondWithError(c, err)

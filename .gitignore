@@ -54,7 +54,7 @@ dist
 out
 out-desktop
 out-denshi
-web
+!web
 .tanstack
 .next
 .idea
