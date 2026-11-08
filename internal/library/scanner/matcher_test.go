@@ -16,6 +16,9 @@ func TestMatcher1(t *testing.T) {
 	anilistClient := anilist.NewTestAnilistClient()
 	animeCollection, err := anilistClient.AnimeCollectionWithRelations(context.Background(), nil)
 	if err != nil {
+		if anilist.IsMissingFixtureError(err) {
+			t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+		}
 		t.Fatal(err.Error())
 	}
 
@@ -152,6 +155,9 @@ func TestMatcher2(t *testing.T) {
 	anilistClient := wrapper.AnilistClient
 	animeCollection, err := wrapper.Platform.GetAnimeCollectionWithRelations(t.Context())
 	if err != nil {
+		if anilist.IsMissingFixtureError(err) {
+			t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+		}
 		t.Fatal(err.Error())
 	}
 	if animeCollection == nil {
@@ -267,6 +273,9 @@ func TestMatcher3(t *testing.T) {
 	anilistClient := wrapper.AnilistClient
 	animeCollection, err := wrapper.Platform.GetAnimeCollectionWithRelations(t.Context())
 	if err != nil {
+		if anilist.IsMissingFixtureError(err) {
+			t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+		}
 		t.Fatal(err.Error())
 	}
 	if animeCollection == nil {
@@ -1387,6 +1396,9 @@ func TestMatcher_applyMatchingRule(t *testing.T) {
 	anilistClient := wrapper.AnilistClient
 	animeCollection, err := wrapper.Platform.GetAnimeCollectionWithRelations(t.Context())
 	if err != nil {
+		if anilist.IsMissingFixtureError(err) {
+			t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+		}
 		t.Fatal(err.Error())
 	}
 	if animeCollection == nil {

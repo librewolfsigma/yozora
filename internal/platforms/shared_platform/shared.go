@@ -59,16 +59,30 @@ func (h *PlatformHelper) GetCustomSourceManager() *customsource.Manager {
 // Custom Source
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (h *PlatformHelper) HandleCustomSourceAnime(ctx context.Context, mediaID int) (*anilist.BaseAnime, bool, error) {
+// HandleCustomSourceAnime resolves a custom source media ID to a BaseAnime.
+//
+// The fourth return value reports that the returned media is a PROVISIONAL
+// recovery placeholder (synthesized from the remembered site URL) rather than
+// fresh provider metadata. Callers must not cache provisional media: a later
+// request will retry the provider so real metadata can replace the placeholder
+// after a transient upstream failure. Caching a placeholder permanently
+// poisons the entry page with slug-derived metadata until server restart.
+func (h *PlatformHelper) HandleCustomSourceAnime(ctx context.Context, mediaID int) (media *anilist.BaseAnime, isCustom bool, provisional bool, err error) {
         if h.customSourceManager == nil {
-                return nil, false, nil
+                return nil, false, false, nil
         }
 
         if customSource, localId, isCustom, hasExtension := h.customSourceManager.GetProviderFromId(mediaID); isCustom {
                 if !hasExtension {
-                        return nil, true, errors.New("custom source does not exist or identifier has changed")
+                        return nil, true, false, errors.New("custom source does not exist or identifier has changed")
                 }
                 ret, err := customSource.GetProvider().GetAnime(ctx, []int{localId})
+                if (err != nil || len(ret) == 0) && ctx.Err() == nil {
+                        // YOZORA (fork): one immediate retry. A single transient upstream blip
+                        // (rate-limit response, one-shot 5xx) would otherwise surface as a
+                        // placeholder entry; the retry heals the first view in most cases.
+                        ret, err = customSource.GetProvider().GetAnime(ctx, []int{localId})
+                }
                 if err != nil || len(ret) == 0 {
                         // YOZORA (fork): the extension resolves hashed local IDs through an
                         // in-VM registry that can be empty after VM recycling or a restart.
@@ -78,18 +92,16 @@ func (h *PlatformHelper) HandleCustomSourceAnime(ctx context.Context, mediaID in
                                 h.logger.Debug().
                                         Str("extension", customSource.GetID()).
                                         Int("localId", localId).
-                                        Msg("custom source: Provider returned no media, recovering entry from remembered site URL")
-                                media := customsource.BuildRecoveryBaseAnime(localId, siteUrl)
-                                customsource.NormalizeMedia(customSource.GetExtensionIdentifier(), customSource.GetID(), media)
-                                return media, true, nil
+                                        Err(err).
+                                        Msg("custom source: Provider returned no anime, recovering entry from remembered site URL")
+                                recovered := customsource.BuildRecoveryBaseAnime(localId, siteUrl)
+                                customsource.NormalizeMedia(customSource.GetExtensionIdentifier(), customSource.GetID(), recovered)
+                                return recovered, true, true, nil
                         }
                         if err != nil {
-                                return nil, true, err
+                                return nil, true, false, err
                         }
-                        return nil, true, errors.New("no anime found: the source could not resolve this media id (browse the source again to refresh it)")
-                }
-                if len(ret) == 0 {
-                        return nil, true, errors.New("no anime found")
+                        return nil, true, false, errors.New("no anime found: the source could not resolve this media id (browse the source again to refresh it)")
                 }
                 media := ret[0]
                 customsource.NormalizeMedia(customSource.GetExtensionIdentifier(), customSource.GetID(), media)
@@ -99,10 +111,10 @@ func (h *PlatformHelper) HandleCustomSourceAnime(ctx context.Context, mediaID in
                                 h.customSourceManager.RememberSiteUrls(customSource.GetID(), map[int]string{localId: rawUrl})
                         }
                 }
-                return media, true, nil
+                return media, true, false, nil
         }
 
-        return nil, false, nil
+        return nil, false, false, nil
 }
 
 func (h *PlatformHelper) HandleCustomSourceAnimeDetails(ctx context.Context, mediaID int) (*anilist.AnimeDetailsById_Media, bool, error) {
@@ -145,34 +157,39 @@ func (h *PlatformHelper) HandleCustomSourceAnimeWithRelations(ctx context.Contex
         return nil, false, nil
 }
 
-func (h *PlatformHelper) HandleCustomSourceManga(ctx context.Context, mediaID int) (*anilist.BaseManga, bool, error) {
+// HandleCustomSourceManga resolves a custom source media ID to a BaseManga.
+// The provisional flag mirrors HandleCustomSourceAnime (do not cache placeholders).
+func (h *PlatformHelper) HandleCustomSourceManga(ctx context.Context, mediaID int) (media *anilist.BaseManga, isCustom bool, provisional bool, err error) {
         if h.customSourceManager == nil {
-                return nil, false, nil
+                return nil, false, false, nil
         }
 
         if customSource, localId, isCustom, hasExtension := h.customSourceManager.GetProviderFromId(mediaID); isCustom {
                 if !hasExtension {
-                        return nil, true, errors.New("custom source does not exist or identifier has changed")
+                        return nil, true, false, errors.New("custom source does not exist or identifier has changed")
                 }
                 ret, err := customSource.GetProvider().GetManga(ctx, []int{localId})
+                if (err != nil || len(ret) == 0) && ctx.Err() == nil {
+                        // YOZORA (fork): one immediate retry against transient upstream blips —
+                        // see HandleCustomSourceAnime.
+                        ret, err = customSource.GetProvider().GetManga(ctx, []int{localId})
+                }
                 if err != nil || len(ret) == 0 {
                         // YOZORA (fork): same recovery path as anime — see HandleCustomSourceAnime.
                         if siteUrl, found := h.customSourceManager.GetRememberedSiteUrl(customSource.GetID(), localId); found {
                                 h.logger.Debug().
                                         Str("extension", customSource.GetID()).
                                         Int("localId", localId).
+                                        Err(err).
                                         Msg("custom source: Provider returned no manga, recovering entry from remembered site URL")
-                                media := customsource.BuildRecoveryBaseManga(localId, siteUrl)
-                                customsource.NormalizeMedia(customSource.GetExtensionIdentifier(), customSource.GetID(), media)
-                                return media, true, nil
+                                recovered := customsource.BuildRecoveryBaseManga(localId, siteUrl)
+                                customsource.NormalizeMedia(customSource.GetExtensionIdentifier(), customSource.GetID(), recovered)
+                                return recovered, true, true, nil
                         }
                         if err != nil {
-                                return nil, true, err
+                                return nil, true, false, err
                         }
-                        return nil, true, errors.New("no manga found: the source could not resolve this media id (browse the source again to refresh it)")
-                }
-                if len(ret) == 0 {
-                        return nil, true, errors.New("no manga found")
+                        return nil, true, false, errors.New("no manga found: the source could not resolve this media id (browse the source again to refresh it)")
                 }
                 media := ret[0]
                 customsource.NormalizeMedia(customSource.GetExtensionIdentifier(), customSource.GetID(), media)
@@ -182,10 +199,10 @@ func (h *PlatformHelper) HandleCustomSourceManga(ctx context.Context, mediaID in
                                 h.customSourceManager.RememberSiteUrls(customSource.GetID(), map[int]string{localId: rawUrl})
                         }
                 }
-                return media, true, nil
+                return media, true, false, nil
         }
 
-        return nil, false, nil
+        return nil, false, false, nil
 }
 
 func (h *PlatformHelper) HandleCustomSourceMangaDetails(ctx context.Context, mediaID int) (*anilist.MangaDetailsById_Media, bool, error) {
