@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"seanime/internal/api/anilist"
+	"seanime/internal/customsource"
 	"seanime/internal/extension"
 	hibikeonlinestream "seanime/internal/extension/hibike/onlinestream"
 	onlinestream_providers "seanime/internal/onlinestream/providers"
@@ -228,6 +229,25 @@ func (r *Repository) getProviderEpisodeList(provider string, media *anilist.Base
 		matchId = mapping.AnimeID
 	}
 
+	// +---------------------+
+	// |   Custom source     |
+	// +---------------------+
+
+	// YOZORA (fork): custom source entries carry their provider page URL in the
+	// tagged siteUrl. Playback providers for these sources (e.g. yozora-hmvmania)
+	// accept the URL/slug directly as the episode id — title-based search is
+	// useless there (upstream search does not index these videos).
+	if matchId == "" && customsource.IsExtensionId(mId) {
+		if siteUrl := media.GetSiteURL(); siteUrl != nil && *siteUrl != "" {
+			if rawUrl, ok := customsource.StripCustomSourceSiteUrlTag(*siteUrl); ok {
+				matchId = rawUrl
+				r.logger.Debug().
+					Str("matchId", rawUrl).
+					Msg("onlinestream: Using custom source site URL as provider episode id")
+			}
+		}
+	}
+
 	if matchId == "" {
 		// +---------------------+
 		// |       Search        |
@@ -236,21 +256,41 @@ func (r *Repository) getProviderEpisodeList(provider string, media *anilist.Base
 		// Get search results.
 		var searchResults []*hibikeonlinestream.SearchResult
 
+		// YOZORA (fork): custom source entries carry optional AniList fields as
+		// null (startDate, format, isAdult, episode count). Dereferencing them
+		// unguarded panicked the whole episode-list endpoint for those entries.
+		var mediaStatus string
+		if media.GetStatus() != nil {
+			mediaStatus = string(*media.GetStatus())
+		}
+		var mediaFormat string
+		if media.GetFormat() != nil {
+			mediaFormat = string(*media.GetFormat())
+		}
+		mediaIsAdult := false
+		if media.GetIsAdult() != nil {
+			mediaIsAdult = *media.GetIsAdult()
+		}
+		mediaEpisodeCount := media.GetTotalEpisodeCount()
+		var mediaStartDate *hibikeonlinestream.FuzzyDate
+		if sd := media.GetStartDate(); sd != nil && sd.GetYear() != nil {
+			mediaStartDate = &hibikeonlinestream.FuzzyDate{
+				Year:  *sd.GetYear(),
+				Month: sd.GetMonth(),
+				Day:   sd.GetDay(),
+			}
+		}
 		queryMedia := hibikeonlinestream.Media{
 			ID:           media.ID,
 			IDMal:        media.GetIDMal(),
-			Status:       string(*media.GetStatus()),
-			Format:       string(*media.GetFormat()),
+			Status:       mediaStatus,
+			Format:       mediaFormat,
 			EnglishTitle: media.GetTitle().GetEnglish(),
 			RomajiTitle:  media.GetRomajiTitleSafe(),
-			EpisodeCount: media.GetTotalEpisodeCount(),
+			EpisodeCount: mediaEpisodeCount,
 			Synonyms:     media.GetSynonymsContainingSeason(),
-			IsAdult:      *media.GetIsAdult(),
-			StartDate: &hibikeonlinestream.FuzzyDate{
-				Year:  *media.GetStartDate().GetYear(),
-				Month: media.GetStartDate().GetMonth(),
-				Day:   media.GetStartDate().GetDay(),
-			},
+			IsAdult:      mediaIsAdult,
+			StartDate:    mediaStartDate,
 		}
 
 		added := make(map[string]struct{})

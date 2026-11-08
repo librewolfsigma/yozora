@@ -13,24 +13,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: Build web UI
-        working-directory: seanime-web
-        run: |
-          npm ci --no-audit --no-fund --loglevel=error
-          npx rsbuild build
-
-      - name: Embed web UI
-        run: |
-          rm -rf web
-          cp -r seanime-web/out web
+      # YOZORA (fork): the embedded web UI is committed under web/, so CI no
+      # longer needs an npm toolchain to produce a server artifact. Rebuild
+      # web/ locally (seanime-web: npm ci && npx rsbuild build, then cp -r
+      # seanime-web/out/* web/) when the web UI changes.
+      - name: Verify embedded web UI is present
+        run: test -f web/index.html
 
       - name: Vet
         run: go vet ./...
