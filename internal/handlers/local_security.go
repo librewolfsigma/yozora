@@ -283,7 +283,41 @@ func isTrustedRequest(req *http.Request, serverPassword string) bool {
                 return isRequestFromTrustedHardenedLocal(req)
         }
 
+        // YOZORA (fork): origin-less requests cannot be cross-site CSRF — browsers
+        // always attach Origin to cross-site writes. Server-to-server clients
+        // (curl, CI, health probes, reverse-proxy hops that terminate the browser
+        // boundary at a local loop) legitimately carry no Origin. The passive
+        // boundary (isRequestPermitted) already permits such requests for reads
+        // when the TCP client is trusted local; grant the same consistency to the
+        // privileged guards. Requests that DO carry origin metadata are unaffected
+        // and still require a trusted/allowlisted origin.
+        if !reqHasOriginMetadata(req) && !isCrossSiteBrowserRequest(req) && hasTrustedLocalClientBoundary(req) {
+                return true
+        }
+
         return isRequestFromTrustedOrigin(req)
+}
+
+// hasTrustedLocalClientBoundary reports whether the TCP client is the local
+// machine itself (loopback: reverse-proxy hops, local scripts, curl) with no
+// untrusted forwarded hop in front of it. Deliberately narrower than
+// isTrustedLocalClient: LAN-private clients keep the upstream behavior of
+// requiring origin metadata for privileged actions.
+func hasTrustedLocalClientBoundary(req *http.Request) bool {
+        if req == nil {
+                return false
+        }
+
+        view := createRequestBoundaryView(req)
+        if !view.clientIP.IsValid() || !view.clientIP.IsLoopback() {
+                return false
+        }
+
+        if hasForwardedHeaders(req) && !view.trustedProxy {
+                return false
+        }
+
+        return true
 }
 
 // YOZORA (fork): coherent allowlist trust.

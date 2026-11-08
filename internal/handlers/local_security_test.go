@@ -1403,3 +1403,82 @@ func TestAllowlistedOriginTrustedForPrivilegedActions(t *testing.T) {
                 assert.True(t, canMutatePrivilegedSettings(req, "", prev, newPrivilegedMedia(), nil, nil))
         })
 }
+
+// YOZORA (fork): origin-less requests from a trusted local client boundary
+// (reverse-proxy hops, curl, CI) cannot be cross-site CSRF and must pass the
+// privileged guards consistently with the passive isRequestPermitted boundary.
+func TestOriginlessLocalClientTrustedForPrivilegedActions(t *testing.T) {
+	prev := &models.Settings{
+		MediaPlayer: &models.MediaPlayerSettings{Default: "system"},
+	}
+
+	newPrivilegedMedia := func() *models.MediaPlayerSettings {
+		next := *prev.MediaPlayer
+		next.MpvPath = "/tmp/mpv-wrapper"
+		return &next
+	}
+
+	t.Run("proxy-hop shape: origin-less loopback client passes privileged guards", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/extensions/external/install-repository", nil)
+		req.Host = "127.0.0.1:43211"
+		req.RemoteAddr = "127.0.0.1:52222"
+
+		assert.True(t, isTrustedRequest(req, ""))
+		assert.True(t, canUsePrivilegedExtensionManagement(req, "", nil))
+		assert.True(t, canMutatePrivilegedSettings(req, "", prev, newPrivilegedMedia(), nil, nil))
+	})
+
+	t.Run("origin-less request with untrusted forwarded hop is denied", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/extensions/external/install-repository", nil)
+		req.Host = "127.0.0.1:43211"
+		req.RemoteAddr = "127.0.0.1:52222"
+		req.Header.Set("X-Forwarded-For", "203.0.113.9")
+
+		assert.False(t, isTrustedRequest(req, ""))
+		assert.False(t, canUsePrivilegedExtensionManagement(req, "", nil))
+	})
+
+	t.Run("origin-less request from public client is denied", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/extensions/external/install-repository", nil)
+		req.Host = "example.com"
+		req.RemoteAddr = "203.0.113.9:52222"
+
+		assert.False(t, isTrustedRequest(req, ""))
+		assert.False(t, canUsePrivilegedExtensionManagement(req, "", nil))
+	})
+
+	t.Run("origin-less request in hardened mode is denied", func(t *testing.T) {
+		security.SetSecureMode(security.SecureModeHardened)
+		t.Cleanup(func() { security.SetSecureMode(security.SecureModeDefault) })
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/extensions/external/install-repository", nil)
+		req.Host = "127.0.0.1:43211"
+		req.RemoteAddr = "127.0.0.1:52222"
+
+		assert.False(t, isTrustedRequest(req, ""))
+		assert.False(t, canUsePrivilegedExtensionManagement(req, "", nil))
+	})
+
+	t.Run("untrusted origin still denied even from loopback client", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/extensions/external/install-repository", nil)
+		req.Host = "127.0.0.1:43211"
+		req.RemoteAddr = "127.0.0.1:52222"
+		req.Header.Set("Origin", "https://evil.example")
+
+		assert.False(t, isTrustedRequest(req, ""))
+		assert.False(t, canUsePrivilegedExtensionManagement(req, "", nil))
+	})
+}
+
+// YOZORA (fork): the origin-less carve-out is loopback-only; LAN-private
+// clients keep the upstream behavior of requiring origin metadata.
+func TestOriginlessCarveoutIsLoopbackOnly(t *testing.T) {
+	t.Run("LAN-private origin-less client still denied", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/extensions/external/install-repository", nil)
+		req.Host = "192.168.1.10:43211"
+		req.RemoteAddr = "192.168.1.20:51111"
+
+		assert.False(t, isTrustedRequest(req, ""))
+		assert.False(t, canUsePrivilegedExtensionManagement(req, "", nil))
+	})
+}
