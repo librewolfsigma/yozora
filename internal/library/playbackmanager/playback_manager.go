@@ -613,9 +613,20 @@ func (pm *PlaybackManager) PullStreamState() (PlaybackState, bool) {
 }
 
 // Cancel stops the current media player playback and publishes a "normal" event.
+// YOZORA (fork): MediaPlayerRepository is assigned asynchronously by
+// SetMediaPlayerRepository (goroutine), so Cancel can legally run before the
+// repository is mounted (e.g. playlist cancel racing the initial mount).
+// Guard against the nil dereference instead of panicking.
 func (pm *PlaybackManager) Cancel() error {
 	pm.Logger.Debug().Msg("playback manager: Cancel called, stopping media player")
-	pm.MediaPlayerRepository.Stop()
+	pm.mu.Lock()
+	repo := pm.MediaPlayerRepository
+	pm.mu.Unlock()
+	if repo == nil {
+		pm.Logger.Debug().Msg("playback manager: no media player repository mounted; nothing to cancel")
+		return nil
+	}
+	repo.Stop()
 	return nil
 }
 
