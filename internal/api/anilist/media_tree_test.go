@@ -39,6 +39,12 @@ func TestBaseAnime_FetchMediaTree_BaseAnime(t *testing.T) {
 
 			mediaF, err := anilistClient.CompleteAnimeByID(context.Background(), &tt.mediaId)
 
+			if err != nil && IsMissingFixtureError(err) {
+				// YOZORA (fork): recorded AniList fixtures are gitignored (personal data);
+				// environments without them skip honestly instead of failing CI.
+				t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+			}
+
 			if assert.NoError(t, err) {
 
 				media := mediaF.GetMedia()

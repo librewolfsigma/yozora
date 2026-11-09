@@ -540,6 +540,23 @@ func (f *Fetch) Fetch(call goja.FunctionCall) goja.Value {
         return f.vm.ToValue(promise)
 }
 
+// finalURL returns the URL of the response after any redirects were followed.
+// YOZORA (fork): imroc/req's Response.Request keeps the ORIGINAL request, so
+// after a redirect chain `url`/`redirected` reported the pre-redirect URL.
+// The embedded stdlib *http.Response carries the last request in the chain.
+func (f *fetchResult) finalURL() string {
+        if f.response == nil {
+                return f.originalURL
+        }
+        if f.response.Response != nil && f.response.Response.Request != nil && f.response.Response.Request.URL != nil {
+                return f.response.Response.Request.URL.String()
+        }
+        if f.response.Request != nil && f.response.Request.URL != nil {
+                return f.response.Request.URL.String()
+        }
+        return f.originalURL
+}
+
 func (f *fetchResult) toGojaObject(vm *goja.Runtime) *goja.Object {
         obj := vm.NewObject()
         _ = obj.Set("status", f.response.StatusCode)
@@ -547,7 +564,7 @@ func (f *fetchResult) toGojaObject(vm *goja.Runtime) *goja.Object {
         _ = obj.Set("method", f.request.Method)
         _ = obj.Set("rawHeaders", f.response.Header)
         _ = obj.Set("ok", f.response.IsSuccessState())
-        _ = obj.Set("url", f.response.Request.URL.String())
+        _ = obj.Set("url", f.finalURL())
         _ = obj.Set("body", f.body)
 
         headers := make(map[string]string)
@@ -563,7 +580,7 @@ func (f *fetchResult) toGojaObject(vm *goja.Runtime) *goja.Object {
                 cookies[cookie.Name] = cookie.Value
         }
         _ = obj.Set("cookies", cookies)
-        _ = obj.Set("redirected", f.originalURL != "" && f.response.Request != nil && f.response.Request.URL.String() != f.originalURL)
+        _ = obj.Set("redirected", f.originalURL != "" && f.finalURL() != f.originalURL)
         _ = obj.Set("contentType", f.response.Header.Get("Content-Type"))
         _ = obj.Set("contentLength", f.response.ContentLength)
 

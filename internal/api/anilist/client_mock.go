@@ -319,6 +319,17 @@ func baseAnimeFixtureSlice(page *int, perPage *int) ([]*BaseAnime, *ListAnime_Pa
                 return nil, nil, err
         }
 
+        // YOZORA (fork): with fixtures absent (they are gitignored), fail loudly
+        // with the recognizable missing-fixture error instead of silently
+        // returning an empty page — tests skip on this error, and silent-empty
+        // behavior would mask real regressions.
+        if len(collections) == 0 {
+                return nil, nil, fmt.Errorf(
+                        "missing AniList fixture for %s (%v); use an authenticated client and set %s=true to refresh fixtures",
+                        "AnimeCollection", "default", testutil.RecordAnilistFixturesEnvName,
+                )
+        }
+
         allMedia := make([]*BaseAnime, 0)
         seen := make(map[int]struct{})
         for _, collection := range collections {

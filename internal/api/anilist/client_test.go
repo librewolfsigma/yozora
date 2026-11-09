@@ -62,7 +62,15 @@ func TestGetAnimeById(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			res, err := anilistClient.BaseAnimeByID(context.Background(), &tt.mediaId)
-			assert.NoError(t, err)
+			if err != nil {
+				if IsMissingFixtureError(err) {
+					// YOZORA (fork): recorded AniList fixtures are gitignored (personal data);
+					// environments without them skip honestly instead of failing CI.
+					t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+				}
+				assert.NoError(t, err)
+				return
+			}
 			assert.NotNil(t, res)
 		})
 	}
@@ -153,6 +161,11 @@ func TestListAnime(t *testing.T) {
 				util.NewLogger(),
 				"",
 			)
+			if err != nil && IsMissingFixtureError(err) {
+				// YOZORA (fork): recorded AniList fixtures are gitignored (personal data);
+				// environments without them skip honestly instead of failing CI.
+				t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+			}
 			assert.NoError(t, err)
 
 			assert.Equal(t, *tt.PerPage, len(res.GetPage().GetMedia()))

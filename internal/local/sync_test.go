@@ -25,9 +25,21 @@ func testSetupManager(t *testing.T) (Manager, *anilist.AnimeCollection, *anilist
 	extensionBankRef := util.NewRef(extension.NewUnifiedBank())
 	anilistPlatform := anilist_platform.NewAnilistPlatform(util.NewRef[anilist.AnilistClient](anilistClient), extensionBankRef, logger, database)
 	animeCollection, err := anilistPlatform.GetAnimeCollection(t.Context(), true)
-	require.NoError(t, err)
+		if err != nil {
+			if anilist.IsMissingFixtureError(err) {
+				// YOZORA (fork): recorded AniList fixtures are gitignored (personal data);
+				// environments without them skip honestly instead of failing CI.
+				t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+			}
+			require.NoError(t, err)
+		}
 	mangaCollection, err := anilistPlatform.GetMangaCollection(t.Context(), true)
-	require.NoError(t, err)
+	if err != nil {
+		if anilist.IsMissingFixtureError(err) {
+			t.Skip("skipping: AniList manga test fixture not recorded (needs an authenticated client)")
+		}
+		require.NoError(t, err)
+	}
 
 	manager := NewTestManager(t, database)
 

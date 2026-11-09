@@ -158,7 +158,12 @@ func TestNewAnimeEntry(t *testing.T) {
 	anilistPlatform := anilist_platform.NewAnilistPlatform(util.NewRef(anilistClient), util.NewRef(extension.NewUnifiedBank()), logger, database)
 	animeCollection, err := anilistPlatform.GetAnimeCollection(t.Context(), false)
 	if err != nil {
-		t.Fatal(err)
+		if anilist.IsMissingFixtureError(err) {
+			// YOZORA (fork): recorded AniList fixtures are gitignored (personal data);
+			// environments without them skip honestly instead of failing CI.
+			t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+		}
+		t.Fatal(err.Error())
 	}
 
 	for _, tt := range tests {

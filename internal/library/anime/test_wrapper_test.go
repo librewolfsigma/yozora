@@ -45,7 +45,14 @@ func newAnimeTestWrapper(t *testing.T) *animeTestWrapper {
 	anilistClient := anilist.NewTestAnilistClient()
 	anilistPlatform := anilist_platform.NewAnilistPlatform(util.NewRef(anilistClient), util.NewRef(extension.NewUnifiedBank()), logger, database)
 	animeCollection, err := anilistPlatform.GetAnimeCollection(t.Context(), false)
-	require.NoError(t, err)
+		if err != nil {
+			if anilist.IsMissingFixtureError(err) {
+				// YOZORA (fork): recorded AniList fixtures are gitignored (personal data);
+				// environments without them skip honestly instead of failing CI.
+				t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+			}
+			require.NoError(t, err)
+		}
 
 	metadataProviderInterface := metadata_provider.Provider(metadataProvider)
 	platformInterface := platform.Platform(anilistPlatform)

@@ -40,7 +40,14 @@ func TestFixtureMangaCollectionUsesCommittedFixture(t *testing.T) {
 	client := NewFixtureAnilistClient()
 
 	collection, err := client.MangaCollection(context.Background(), nil)
-	require.NoError(t, err)
+	if err != nil {
+		if IsMissingFixtureError(err) {
+			// YOZORA (fork): recorded AniList fixtures are gitignored (personal data);
+			// environments without them skip honestly instead of failing CI.
+			t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+		}
+		require.NoError(t, err)
+	}
 	require.NotNil(t, collection)
 
 	entry, found := collection.GetListEntryFromMangaId(101517)

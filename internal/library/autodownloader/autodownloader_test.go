@@ -41,7 +41,14 @@ func newTestAnimeCollection(t *testing.T, mediaId int) *anilist.AnimeCollection 
 
 	anilistClient := anilist.NewTestAnilistClient()
 	animeCollection, err := anilistClient.AnimeCollection(context.Background(), nil)
-	require.NoError(t, err)
+		if err != nil {
+			if anilist.IsMissingFixtureError(err) {
+				// YOZORA (fork): recorded AniList fixtures are gitignored (personal data);
+				// environments without them skip honestly instead of failing CI.
+				t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+			}
+			require.NoError(t, err)
+		}
 
 	entry, found := animeCollection.GetListEntryFromAnimeId(mediaId)
 	require.True(t, found)
@@ -1006,7 +1013,14 @@ func TestIsProfileValidChecks(t *testing.T) {
 func TestIntegration(t *testing.T) {
 	anilistClient := anilist.NewTestAnilistClient()
 	animeCollection, err := anilistClient.AnimeCollection(context.Background(), nil)
-	require.NoError(t, err)
+		if err != nil {
+			if anilist.IsMissingFixtureError(err) {
+				// YOZORA (fork): recorded AniList fixtures are gitignored (personal data);
+				// environments without them skip honestly instead of failing CI.
+				t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+			}
+			require.NoError(t, err)
+		}
 
 	tests := []struct {
 		name             string
@@ -1244,7 +1258,14 @@ func TestIntegration(t *testing.T) {
 func TestDelayIntegration(t *testing.T) {
 	anilistClient := anilist.NewTestAnilistClient()
 	animeCollection, err := anilistClient.AnimeCollection(context.Background(), nil)
-	require.NoError(t, err)
+		if err != nil {
+			if anilist.IsMissingFixtureError(err) {
+				// YOZORA (fork): recorded AniList fixtures are gitignored (personal data);
+				// environments without them skip honestly instead of failing CI.
+				t.Skip("skipping: AniList test fixture not recorded (needs an authenticated client)")
+			}
+			require.NoError(t, err)
+		}
 
 	mediaId := 154587 // Sousou no Frieren
 	testAnimeCollection := animeCollection.Copy()
